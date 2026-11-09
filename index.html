@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offer Pro - 专业交互式简历生成器</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #F1F5F9; --panel-bg: #FFFFFF; --text-main: #1E293B;
+            --text-muted: #64748B; --border: #E2E8F0; --primary: #4F46E5;
+            --primary-hover: #4338CA; --paper-bg: #FFFFFF;
+            --tag-bg: #EEF2FF; --tag-text: #4338CA;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+        body { background-color: var(--bg-color); display: flex; height: 100vh; overflow: hidden; }
+
+        /* ===== 左侧控制面板 ===== */
+        .control-panel {
+            width: 460px; /* 稍微加宽一点，放更多按钮 */
+            background: var(--panel-bg); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; box-shadow: 4px 0 15px rgba(0,0,0,0.03); z-index: 10;
+        }
+
+        .panel-header {
+            padding: 20px; border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center; background: #F8FAFC;
+        }
+        .panel-header h1 { font-size: 18px; font-weight: 800; color: var(--text-main); }
+        .panel-header h1 span { color: var(--primary); }
+
+        .btn-print {
+            background: var(--primary); color: white; border: none;
+            padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px;
+        }
+        .btn-print:hover { background: var(--primary-hover); transform: translateY(-1px); }
+
+        .form-scroll { flex: 1; overflow-y: auto; padding: 24px; }
+
+        .section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--tag-bg);
+        }
+        .section-header:first-child { margin-top: 0; }
+        .section-title { font-size: 14px; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+        
+        .btn-add-item {
+            background: white; border: 1px solid var(--primary); color: var(--primary);
+            padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .btn-add-item:hover { background: var(--primary); color: white; }
+
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; font-weight: 600; }
+        .input-group input, .input-group textarea {
+            width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 13px; color: var(--text-main); outline: none; transition: all 0.2s;
+            font-family: inherit; background: #F8FAFC;
+        }
+        .input-group input:focus, .input-group textarea:focus { border-color: var(--primary); background: white; }
+        .input-group textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+
+        /* 多段经历卡片样式 */
+        .dynamic-item {
+            background: #F8FAFC; border: 1px dashed var(--border); padding: 16px;
+            border-radius: 10px; margin-bottom: 16px; position: relative;
+        }
+        .btn-delete-item {
+            position: absolute; top: 12px; right: 12px;
+            background: #FEE2E2; border: none; color: #EF4444;
+            padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: 0.2s;
+        }
+        .btn-delete-item:hover { background: #EF4444; color: white; }
+
+        /* 照片上传区 */
+        .avatar-upload { display: flex; align-items: center; gap: 16px; padding: 16px; border: 1px dashed var(--border); border-radius: 12px; background: #F8FAFC; }
+        .avatar-preview { width: 60px; height: 80px; border-radius: 6px; background: #E2E8F0; object-fit: cover; border: 2px solid white; }
+        .upload-btn-label { background: white; border: 1px solid var(--border); padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+        #file-upload { display: none; }
+
+        /* ===== 右侧预览区 ===== */
+        .preview-area { flex: 1; overflow-y: auto; padding: 40px; display: flex; justify-content: center; align-items: flex-start; background: #E2E8F0; }
+
+        .paper {
+            width: 210mm; min-height: 297mm; background: var(--paper-bg);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1); padding: 45px 50px; box-sizing: border-box;
+            transform-origin: top center;
+        }
+
+        /* 头部 */
+        .resume-header { position: relative; text-align: center; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 30px; min-height: 130px; display: flex; flex-direction: column; justify-content: center; }
+        .resume-photo { position: absolute; right: 0; top: 0; width: 100px; height: 130px; border-radius: 8px; object-fit: cover; border: 2px solid #F1F5F9; display: none; }
+        .header-info { padding: 0 120px; }
+        .resume-name { font-size: 32px; font-weight: 800; color: #0F172A; margin-bottom: 6px; letter-spacing: 2px; }
+        .resume-job { font-size: 16px; font-weight: 600; color: var(--primary); margin-bottom: 12px; }
+        .resume-contact { font-size: 13px; color: var(--text-muted); display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+
+        /* 主体模块 */
+        .resume-section { margin-bottom: 24px; }
+        .resume-sec-title { font-size: 16px; font-weight: 700; color: #0F172A; border-bottom: 2px solid #0F172A; padding-bottom: 8px; margin-bottom: 16px; letter-spacing: 1px; display: flex; align-items: center; }
+        .resume-sec-title::before { content: ''; display: inline-block; width: 4px; height: 16px; background: var(--primary); margin-right: 10px; border-radius: 2px; }
+        
+        .resume-item { margin-bottom: 16px; }
+        .resume-item-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+        .resume-item-title { font-size: 15px; font-weight: 700; color: #1E293B; }
+        .resume-item-date { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+        .resume-item-desc { font-size: 14px; color: #475569; line-height: 1.6; white-space: pre-wrap; text-align: justify; }
+
+        /* 技能标签 */
+        .skills-container { display: flex; flex-wrap: wrap; gap: 8px; }
+        .skill-tag { background: var(--tag-bg); color: var(--tag-text); padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <!-- 左侧控制台 -->
+    <div class="control-panel">
+        <div class="panel-header">
+            <h1><span>Offer</span> Pro</h1>
+            <button class="btn-print" id="export-btn" onclick="exportPDF()">📥 导出 PDF</button>
+        </div>
+        
+        <div class="form-scroll" id="form-container">
+            <!-- JS 会在这里动态渲染表单，以保证多段数据不丢失焦点 -->
+        </div>
+    </div>
+
+    <!-- 右侧预览区 -->
+    <div class="preview-area">
+        <div class="paper" id="resume-paper">
+            <!-- 头部 -->
+            <div class="resume-header">
+                <img src="" id="out-photo" class="resume-photo">
+                <div class="header-info">
+                    <div class="resume-name" id="out-name"></div>
+                    <div class="resume-job" id="out-job"></div>
+                    <div class="resume-contact" id="out-contact"></div>
+                </div>
+            </div>
+            <!-- 动态模块容器 -->
+            <div id="resume-body"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局数据状态
+        let state = {
+            name: '张三',
+            job: '前端开发工程师',
+            contact: '13800000000 | mail@test.com | 北京',
+            avatar: '',
+            educations: [
+                { school: '北京大学 - 计算机科学与技术 - 硕士', date: '2025.09 - 2028.06' },
+                { school: '某某大学 - 软件工程 - 本科', date: '2021.09 - 2025.06' }
+            ],
+            experiences: [
+                { title: '字节跳动 - 前端开发实习生', date: '2023.06 - 2023.09', desc: '1. 负责核心业务组件库的搭建与维护。\n2. 优化首屏加载性能，LCP 指标提升了 35%。' }
+            ],
+            skills: 'HTML/CSS, JavaScript, React, Vue3, Webpack, Git',
+            self: '热爱前端技术，具备良好的团队协作与沟通能力，抗压能力强。'
+        };
+
+        // 初始化加载
+        window.onload = () => {
+            const saved = localStorage.getItem('offerpro_multi_state');
+            if (saved) {
+                state = JSON.parse(saved);
+            }
+            renderLeftForm(); // 只初始化渲染一次左侧
+            updateRightPreview(); // 更新右侧
+            adjustScale();
+            window.addEventListener('resize', adjustScale);
+        };
+
+        // 保存数据到本地
+        function saveState() {
+            localStorage.setItem('offerpro_multi_state', JSON.stringify(state));
+            updateRightPreview();
+        }
+
+        // ================= 左侧表单动态渲染 =================
+        function renderLeftForm() {
+            const container = document.getElementById('form-container');
+            let html = '';
+
+            // 照片
+            html += `
+            <div class="section-header"><div class="section-title">📸 个人照片</div></div>
+            <div class="avatar-upload">
+                <img src="${state.avatar || ''}" id="avatar-preview" class="avatar-preview" style="${state.avatar ? '' : 'display:none;'}">
+                <div>
+                    <label for="file-upload" class="upload-btn-label">选择照片上传</label>
+                    <input type="file" id="file-upload" accept="image/*" onchange="handleImageUpload(event)">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">建议上传两寸证件照</p>
+                </div>
+            </div>`;
+
+            // 基础信息
+            html += `
+            <div class="section-header"><div class="section-title">👤 基础信息</div></div>
+            <div class="input-group"><label>姓名</label><input type="text" value="${state.name}" oninput="updateBase('name', this.value)"></div>
+            <div class="input-group"><label>求职意向</label><input type="text" value="${state.job}" oninput="updateBase('job', this.value)"></div>
+            <div class="input-group"><label>联系方式</label><input type="text" value="${state.contact}" oninput="updateBase('contact', this.value)"></div>`;
+
+            // 教育背景 (多段)
+            html += `<div class="section-header"><div class="section-title">🎓 教育背景</div><button class="btn-add-item" onclick="addEdu()">+ 添加学历</button></div>`;
+            state.educations.forEach((edu, index) => {
+                html += `
+                <div class="dynamic-item">
+                    ${index > 0 ? `<button class="btn-delete-item" onclick="removeEdu(${index})">🗑️ 删除</button>` : ''}
+                    <div class="input-group"><label>学校 - 专业 - 学历</label><input type="text" value="${edu.school}" oninput="updateEdu(${index}, 'school', this.value)"></div>
+                    <div class="input-group"><label>时间</label><input type="text" value="${edu.date}" oninput="updateEdu(${index}, 'date', this.value)"></div>
+                </div>`;
+            });
+
+            // 核心经历 (多段)
+            html += `<div class="section-header"><div class="section-title">💼 核心经历</div><button class="btn-add-item" onclick="addExp()">+ 添加经历</button></div>`;
+            state.experiences.forEach((exp, index) => {
+                html += `
+                <div class="dynamic-item">
+                    ${index > 0 ? `<button class="btn-delete-item" onclick="removeExp(${index})">🗑️ 删除</button>` : ''}
+                    <div class="input-group"><label>公司 / 项目名称</label><input type="text" value="${exp.title}" oninput="updateExp(${index}, 'title', this.value)"></div>
+                    <div class="input-group"><label>时间</label><input type="text" value="${exp.date}" oninput="updateExp(${index}, 'date', this.value)"></div>
+                    <div class="input-group"><label>描述内容</label><textarea oninput="updateExp(${index}, 'desc', this.value)">${exp.desc}</textarea></div>
+                </div>`;
+            });
+
+            // 技能与评价
+            html += `
+            <div class="section-header"><div class="section-title">🛠️ 专业技能</div></div>
+            <div class="input-group"><input type="text" value="${state.skills}" oninput="updateBase('skills', this.value)" placeholder="逗号分隔"></div>
+            <div class="section-header"><div class="section-title">💡 自我评价</div></div>
+            <div class="input-group"><textarea oninput="updateBase('self', this.value)">${state.self}</textarea></div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        // 局部更新函数
+        function updateBase(key, val) { state[key] = val; saveState(); }
+        function updateEdu(i, key, val) { state.educations[i][key] = val; saveState(); }
+        function updateExp(i, key, val) { state.experiences[i][key] = val; saveState(); }
+
+        // 增删逻辑
+        function addEdu() {
+            state.educations.push({ school: '', date: '' });
+            renderLeftForm(); // 重绘左侧（只重绘一次，不影响右侧实时预览）
+            saveState();
+        }
+        function removeEdu(i) {
+            state.educations.splice(i, 1);
+            renderLeftForm(); saveState();
+        }
+        function addExp() {
+            state.experiences.push({ title: '', date: '', desc: '' });
+            renderLeftForm(); saveState();
+        }
+        function removeExp(i) {
+            state.experiences.splice(i, 1);
+            renderLeftForm(); saveState();
+        }
+
+        // 照片上传
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const maxWidth = 400;
+                    let width = img.width, height = img.height;
+                    if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    
+                    state.avatar = canvas.toDataURL('image/jpeg', 0.85);
+                    renderLeftForm(); // 刷新头像预览
+                    saveState();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // ================= 右侧预览实时渲染 =================
+        function updateRightPreview() {
+            document.getElementById('out-name').innerText = state.name;
+            document.getElementById('out-job').innerText = state.job;
+            document.getElementById('out-contact').innerText = state.contact;
+            
+            const photo = document.getElementById('out-photo');
+            if (state.avatar) { photo.src = state.avatar; photo.style.display = 'block'; }
+            else { photo.style.display = 'none'; }
+
+            const body = document.getElementById('resume-body');
+            let html = '';
+
+            // 教育背景渲染
+            if (state.educations.length > 0) {
+                html += `<div class="resume-section"><div class="resume-sec-title">教育背景</div>`;
+                state.educations.forEach(edu => {
+                    if(!edu.school && !edu.date) return;
+                    html += `
+                    <div class="resume-item">
+                        <div class="resume-item-header">
+                            <div class="resume-item-title">${edu.school}</div>
+                            <div class="resume-item-date">${edu.date}</div>
+                        </div>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            // 核心经历渲染
+            if (state.experiences.length > 0) {
+                html += `<div class="resume-section"><div class="resume-sec-title">核心经历</div>`;
+                state.experiences.forEach(exp => {
+                    if(!exp.title && !exp.desc) return;
+                    html += `
+                    <div class="resume-item">
+                        <div class="resume-item-header">
+                            <div class="resume-item-title">${exp.title}</div>
+                            <div class="resume-item-date">${exp.date}</div>
+                        </div>
+                        <div class="resume-item-desc">${exp.desc}</div>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+
+            // 技能
+            if (state.skills.trim()) {
+                html += `<div class="resume-section"><div class="resume-sec-title">专业技能</div><div class="skills-container">`;
+                state.skills.split(/[,，]/).forEach(skill => {
+                    if(skill.trim()) html += `<span class="skill-tag">${skill.trim()}</span>`;
+                });
+                html += `</div></div>`;
+            }
+
+            // 自我评价
+            if (state.self.trim()) {
+                html += `<div class="resume-section"><div class="resume-sec-title">自我评价</div><div class="resume-item-desc">${state.self}</div></div>`;
+            }
+
+            body.innerHTML = html;
+        }
+
+        // 导出 PDF 逻辑
+        function exportPDF() {
+            const element = document.getElementById('resume-paper');
+            const btn = document.getElementById('export-btn');
+            btn.innerHTML = '⏳ 正在生成...'; btn.disabled = true;
+            
+            const originalTransform = element.style.transform;
+            const originalMargin = element.style.marginBottom;
+            element.style.transform = 'none'; element.style.marginBottom = '0';
+
+            const opt = {
+                margin: 0, filename: `${state.name || '我的'}_简历.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save().then(() => {
+                btn.innerHTML = '📥 导出 PDF'; btn.disabled = false;
+                element.style.transform = originalTransform; element.style.marginBottom = originalMargin;
+            }).catch(() => {
+                alert("生成失败，请用 Chrome 浏览器。");
+                btn.innerHTML = '📥 导出 PDF'; btn.disabled = false;
+                element.style.transform = originalTransform; element.style.marginBottom = originalMargin;
+            });
+        }
+
+        // 响应式缩放
+        function adjustScale() {
+            const paper = document.getElementById('resume-paper');
+            const area = document.querySelector('.preview-area');
+            const pw = 794; 
+            if (area.clientWidth < pw + 80) {
+                const scale = (area.clientWidth - 40) / pw;
+                paper.style.transform = `scale(${scale})`;
+                paper.style.marginBottom = `-${(1 - scale) * 1123}px`;
+            } else {
+                paper.style.transform = 'scale(1)'; paper.style.marginBottom = '0';
+            }
+        }
+    </script>
+</body>
+</html>
